@@ -1,7 +1,8 @@
 import ttkbootstrap as ttk
 from ttkbootstrap.constants import *
-from tkinter import filedialog, Toplevel, CENTER
+from tkinter import filedialog
 from tkinter.scrolledtext import ScrolledText
+from attacks import BruteForceAttacker
 
 class BruteForceTool:
     def __init__(self, root):
@@ -49,14 +50,26 @@ class BruteForceTool:
     def log(self, message):
         self.log_output.insert("end", f"{message}\n")
         self.log_output.see("end")
+        self.root.update_idletasks()
 
     def run_attack(self):
         target = self.target_entry.get()
         username = self.username_entry.get()
         wordlist = self.wordlist_path.get()
         protocol = self.protocol.get()
-        self.log(f"[+] Simulating attack on {protocol.upper()} at {target} using {username}... (wordlist: {wordlist})")
-        # We'll add real attack logic next
+
+        if not all([target, username, wordlist, protocol]):
+            self.log("[!] Please fill in all fields before starting the attack.")
+            return
+
+        self.log(f"[+] Simulating attack on {protocol.upper()} at {target} using username '{username}'...")
+        self.log(f"[+] Using wordlist: {wordlist}")
+
+        try:
+            attacker = BruteForceAttacker(target, username, wordlist, protocol, logger=self.log)
+            attacker.start_attack()
+        except Exception as e:
+            self.log(f"[!] Error occurred during attack: {str(e)}")
 
 if __name__ == "__main__":
     root = ttk.Window(themename="darkly")
