@@ -1,0 +1,19 @@
+Brute Force Attack Report
+Date/Time: 2025-10-11 14:24:54
+Target: http://testphp.vulnweb.com/login.php
+Protocol: HTTP
+Total Attempts: 17
+Successful Hits: 10
+----------------------------------------
+
+Username,Password
+guest,password123
+admin,password123
+administrator,password123
+adm,password123
+root,password123
+user,password123
+info,password123
+test,password123
+oracle,password123
+mysql,password123
