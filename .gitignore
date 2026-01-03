@@ -17,5 +17,9 @@ Thumbs.db
 .vscode/
 .idea/
 
-output/
+output/*
+!output/
+!output/*.csv
+!output/*.pdf
+
 
